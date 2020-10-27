@@ -1,0 +1,220 @@
+#!/bin/bash
+
+# A simple tee in pure bash 
+# Implement reopen files
+
+SELF="${BASH_SOURCE[0]##*/}"
+
+OPTS="d:p:i:s:h"
+USAGE="Usage: $SELF [$OPTS] FILE1 FILE2 ..."
+
+HELP="
+$USAGE
+
+    Options:
+        add:
+            -d          Description
+            -p          priority (1-9)
+            -i          Force id
+        edit:
+            -i          id
+            -d          Description
+        done:
+            -i          id
+        ongoing:
+            -i          id
+        show:
+            -i          id
+        list:
+            Default: Id orders from high priority to low, and from ongoing to created (Done will not be listed only if set)
+            -p          Priority
+            -s          state (done,ongoing,done)
+        remove:
+            -i          id
+
+        -h      Help
+
+    Environment Variables:
+        NO_COLOR
+
+    About
+        This script will create the following directory tree:
+            HOME/$SELF/{created,done,ongoing}/{1-9}/ID/{description,content}
+"
+
+workingDir="$HOME/.$SELF"
+tempFiles=()
+
+_quit(){
+    local retCode="$1" msg="${*:2}"
+
+    printf '%s\n' "$msg"
+    exit "$retCode"
+}
+
+_find(){
+    local _dir _id
+    [[ -z "$1" ]] && return 1
+    shopt -s extglob
+    for _dir in "$workingDir"/{created,done,ongoing}/*/*; do
+        _id="${_dir##*/}"
+        [[ "$_id" == "$1" ]] && { printf '%s' "$_dir"
+            return
+        }
+    done
+
+    return 1
+}
+
+_mktemp(){
+    local tmpFile
+    tmpFile="$(mktemp "${TMPDIR:-/tmp}/$SELF.XXXXXXXXXXX")"
+    tempFiles+=("$tmpFile")
+    printf '%s' "$tmpFile"    
+}
+
+_parse(){
+    IFS='/' read -r state priority id <<<"${1#$workingDir/}"
+}
+
+_exit(){
+    for file in "${tempFiles[@]}"; do
+        rm "$file"
+    done
+}
+
+add(){
+    for value in "description" "priority"; do
+        [[ -z "${!value}" ]] && _quit 2 "$value is not defined!\n $HELP"
+    done
+
+    mkdir -p "$workingDir" &>/dev/null
+    [[ -f "$workingDir/lastId" ]] || printf '0' > "$workingDir/lastId"
+    [[ -z "$id" ]] && { ((id=$(<"$workingDir/lastId") + 1 ))
+        overrideLastId=1
+    }
+
+    [[ -d "$workingDir/created/$priority/$id" ]] || mkdir -p "$workingDir/created/$priority/$id"
+    printf '%s' "$description" > "$workingDir/created/$priority/$id/description"
+
+    ${EDITOR:-vi} "$workingDir/created/$priority/$id/content"
+
+    (( overrideLastId )) && printf '%s' "$id" > "$workingDir/lastId"
+}
+
+list(){
+    local results
+    [[ -z "${state[*]}" ]] && state=("ongoing" "created")    
+
+    shopt -s extglob
+    shopt -s nullglob 
+
+    # This is shitty and need improvement
+    for _state in "${state[@]}"; do
+        printf '%s:\n' "${_state^}"
+        if [[ -z "$priority" ]]; then
+            results=("$workingDir/$_state/"*)
+        else
+            results=("$workingDir/$_state/$priority")
+        fi
+        for _priority in "${results[@]}"; do
+            # Reqrite this part by creating a custom sort command!
+            tasks=($_priority/*)
+
+            # don't print anything if empty dir
+            [[ -z "${tasks[*]}" ]] && continue
+            readarray -t orderedTasks < <(printf '%s\n' "${tasks[@]}" | sort -V)
+
+            printf '     %s:\n' "${_priority##*/}"
+            for _id in "${orderedTasks[@]}"; do
+                _description="$(<"$_id/description")"
+                printf '        %s. %s\n' "${_id##*/}" "$_description"
+                unset _description
+            done
+            unset tasks orderedTasks
+        done
+        printf '\n'
+     done
+}
+
+show(){
+    local task
+    [[ -z "$HELP" ]] && _quit 2 "$HELP"
+    task="$(_find "$id")" tmpFile="$(_mktemp)"
+ 
+    [[ -z "$task" ]] && _quit 2 "Task not found!"   
+    printf 'Description: \n %s\n\n' "$(<"$task"/description)" >"$tmpFile"
+    printf 'Content: \n%s' "$(<"$task"/content)" >>"$tmpFile"
+
+    ${PAGER:-less} "$tmpFile"
+}
+
+don(){
+    local task
+    [[ -z "$id" ]] && _quit 2 "$HELP"
+    task="$(_find "$id")"
+
+    [[ -z "$task" ]] && _quit 2 "Task not found!"
+   _parse "$(_find "$id")"
+
+
+    [[ -d "$workingDir/done/$priority" ]] || mkdir -p "$workingDir/done/$priority"
+    mv "$task" "$workingDir/done/$priority/$id"
+}
+
+ongoing(){
+    local task
+    [[ -z "$id" ]] && _quit 2 "$HELP"
+    task="$(_find "$id")"
+    
+    [[ -z "$task" ]] && _quit 2 "Task not found!"
+    _parse "$(_find "$id")"
+
+
+    [[ -d "$workingDir/ongoing/$priority" ]] || mkdir -p "$workingDir/ongoing/$priority"
+    mv "$task" "$workingDir/ongoing/$priority/$id"
+}
+
+remove(){
+    local task
+    [[ -z "$id" ]] && _quit 2 "$HELP"
+    task="$(_find "$id")"
+
+    [[ -z "$task" ]] && _quit 2 "Task not found!"
+    read -rp "Do you really want to remove tasks $id [yN] : " var 
+    [[ "${var,}" == "y" ]] && rm -r "$task"
+}
+
+edit(){
+    local task
+    [[ -z "$id" ]] && _quit 2 "$HELP"
+    task="$(_find "$id")"    
+
+    [[ -z "$description" ]] || printf '%s' "$description" > "$task"/description
+
+    ${EDITOR:-vi} "$task"/content
+}
+
+case "$1" in
+    add|list|remove|ongoing|edit|show)  method="$1";     shift          ;;
+    don?)                               method="don";    shift          ;;
+    *)                                  _quit 2 "$HELP"                 ;;
+esac
+
+# parse simple options, we will only accept short opts
+while getopts "${OPTS}" arg; do
+    case "${arg}" in
+        i) id="${OPTARG}"                       ;;
+        d) description="${OPTARG}"              ;;
+        s) IFS=',' read -ra state <<<"${OPTARG}" ;;
+        p) priority="${OPTARG}"                 ;;
+        h) _quit 0 "$HELP"                      ;;
+        ?) _quit 1 "Invalid Argument: $USAGE"   ;;
+        *) _quit 1 "$USAGE"                     ;;
+    esac
+done
+shift $((OPTIND - 1))
+
+trap '_exit' EXIT
+
+PATH="" type -t "$method" &>/dev/null && $method
