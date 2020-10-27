@@ -44,8 +44,9 @@ $USAGE
 "
 
 : "${TODO_WORKINGDIR:=$HOME/.$SELF}"
-tempFiles=()
+TODO_WORKINGDIR="${TODO_WORKINGDIR%/}"
 
+tempFiles=()
 
 _quit(){
     local retCode="$1" msg="${*:2}"
