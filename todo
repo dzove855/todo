@@ -14,7 +14,7 @@ $USAGE
     Options:
         add:
             -d          Description
-            -p          priority (1-9)
+            -p          priority (high,medium,low)
             -i          Force id
         edit:
             -i          id
@@ -43,8 +43,9 @@ $USAGE
             HOME/$SELF/{created,done,ongoing}/{1-9}/ID/{description,content}
 "
 
-workingDir="${TODO_WORKINGDIR:-$HOME/.$SELF}"
+: "${TODO_WORKINGDIR:=$HOME/.$SELF}"
 tempFiles=()
+
 
 _quit(){
     local retCode="$1" msg="${*:2}"
@@ -57,7 +58,7 @@ _find(){
     local _dir _id
     [[ -z "$1" ]] && return 1
     shopt -s extglob
-    for _dir in "$workingDir"/{created,done,ongoing}/*/*; do
+    for _dir in "$TODO_WORKINGDIR"/{created,done,ongoing}/*/*; do
         _id="${_dir##*/}"
         [[ "$_id" == "$1" ]] && { printf '%s' "$_dir"
             return
@@ -75,7 +76,7 @@ _mktemp(){
 }
 
 _parse(){
-    IFS='/' read -r state priority id <<<"${1#$workingDir/}"
+    IFS='/' read -r state priority id <<<"${1#$TODO_WORKINGDIR/}"
 }
 
 _exit(){
@@ -85,27 +86,29 @@ _exit(){
 }
 
 add(){
-    for value in "description" "priority"; do
+    for value in "description"; do
         [[ -z "${!value}" ]] && _quit 2 "$value is not defined!\n $HELP"
     done
 
-    mkdir -p "$workingDir" &>/dev/null
-    [[ -f "$workingDir/lastId" ]] || printf '0' > "$workingDir/lastId"
-    [[ -z "$id" ]] && { ((id=$(<"$workingDir/lastId") + 1 ))
+    : "${priority:=low}"
+
+    mkdir -p "$TODO_WORKINGDIR" &>/dev/null
+    [[ -f "$TODO_WORKINGDIR/lastId" ]] || printf '0' > "$TODO_WORKINGDIR/lastId"
+    [[ -z "$id" ]] && { ((id=$(<"$TODO_WORKINGDIR/lastId") + 1 ))
         overrideLastId=1
     }
 
-    [[ -d "$workingDir/created/$priority/$id" ]] || mkdir -p "$workingDir/created/$priority/$id"
-    printf '%s' "$description" > "$workingDir/created/$priority/$id/description"
+    [[ -d "$TODO_WORKINGDIR/created/$priority/$id" ]] || mkdir -p "$TODO_WORKINGDIR/created/$priority/$id"
+    printf '%s' "$description" > "$TODO_WORKINGDIR/created/$priority/$id/description"
 
-    ${EDITOR:-vi} "$workingDir/created/$priority/$id/content"
+    ${EDITOR:-vi} "$TODO_WORKINGDIR/created/$priority/$id/content"
 
-    (( overrideLastId )) && printf '%s' "$id" > "$workingDir/lastId"
+    (( overrideLastId )) && printf '%s' "$id" > "$TODO_WORKINGDIR/lastId"
 }
 
 list(){
-    local results
     [[ -z "${state[*]}" ]] && state=("ongoing" "created")    
+    [[ -z "${priority[*]}" ]] && priority=("high" "medium" "low")
 
     shopt -s extglob
     shopt -s nullglob 
@@ -113,20 +116,16 @@ list(){
     # This is shitty and need improvement
     for _state in "${state[@]}"; do
         printf '%s:\n' "${_state^}"
-        if [[ -z "$priority" ]]; then
-            results=("$workingDir/$_state/"*)
-        else
-            results=("$workingDir/$_state/$priority")
-        fi
-        for _priority in "${results[@]}"; do
+
+        for _priority in "${priority[@]}"; do
             # Reqrite this part by creating a custom sort command!
-            tasks=($_priority/*)
+            tasks=($TODO_WORKINGDIR/$_state/$_priority/*)
 
             # don't print anything if empty dir
             [[ -z "${tasks[*]}" ]] && continue
             readarray -t orderedTasks < <(printf '%s\n' "${tasks[@]}" | sort -V)
 
-            printf '     %s:\n' "${_priority##*/}"
+            printf '     %s:\n' "${_priority}"
             for _id in "${orderedTasks[@]}"; do
                 _description="$(<"$_id/description")"
                 printf '        %s. %s\n' "${_id##*/}" "$_description"
@@ -135,7 +134,7 @@ list(){
             unset tasks orderedTasks
         done
         printf '\n'
-     done
+    done
 }
 
 show(){
@@ -159,8 +158,8 @@ don(){
    _parse "$(_find "$id")"
 
 
-    [[ -d "$workingDir/done/$priority" ]] || mkdir -p "$workingDir/done/$priority"
-    mv "$task" "$workingDir/done/$priority/$id"
+    [[ -d "$TODO_WORKINGDIR/done/${priority[0]}" ]] || mkdir -p "$TODO_WORKINGDIR/done/${priority[0]}"
+    mv "$task" "$TODO_WORKINGDIR/done/${priority[0]}/$id"
 }
 
 ongoing(){
@@ -172,8 +171,8 @@ ongoing(){
     _parse "$(_find "$id")"
 
 
-    [[ -d "$workingDir/ongoing/$priority" ]] || mkdir -p "$workingDir/ongoing/$priority"
-    mv "$task" "$workingDir/ongoing/$priority/$id"
+    [[ -d "$TODO_WORKINGDIR/ongoing/${priority[0]}" ]] || mkdir -p "$TODO_WORKINGDIR/ongoing/${priority[0]}"
+    mv "$task" "$TODO_WORKINGDIR/ongoing/${priority[0]}/$id"
 }
 
 remove(){
@@ -205,13 +204,13 @@ esac
 # parse simple options, we will only accept short opts
 while getopts "${OPTS}" arg; do
     case "${arg}" in
-        i) id="${OPTARG}"                       ;;
-        d) description="${OPTARG}"              ;;
-        s) IFS=',' read -ra state <<<"${OPTARG}" ;;
-        p) priority="${OPTARG}"                 ;;
-        h) _quit 0 "$HELP"                      ;;
-        ?) _quit 1 "Invalid Argument: $USAGE"   ;;
-        *) _quit 1 "$USAGE"                     ;;
+        i) id="${OPTARG}"                               ;;
+        d) description="${OPTARG}"                      ;;
+        s) IFS=',' read -ra state <<<"${OPTARG}"        ;;
+        p) IFS=',' read -ra priority <<<"${OPTARG}"     ;;
+        h) _quit 0 "$HELP"                              ;;
+        ?) _quit 1 "Invalid Argument: $USAGE"           ;;
+        *) _quit 1 "$USAGE"                             ;;
     esac
 done
 shift $((OPTIND - 1))
