@@ -18,6 +18,7 @@ $USAGE
             -i          Force id
         edit:
             -i          id
+            -p          priority
             -d          Description
         done:
             -i          id
@@ -45,6 +46,14 @@ $USAGE
 
 : "${TODO_WORKINGDIR:=$HOME/.$SELF}"
 TODO_WORKINGDIR="${TODO_WORKINGDIR%/}"
+
+declare -A color=(
+    [high]='\033[31m'
+    [medium]='\033[33m'
+    [low]='\033[32m'
+)
+
+[[ -z "$NO_COLOR" ]] || declare -A color=([high]="" [medium]="" [low]="")    
 
 tempFiles=()
 
@@ -86,12 +95,21 @@ _exit(){
     done
 }
 
+_priorityCheck(){
+    case "$1" in
+        high|medium|low)        return                          ;;
+        *)                      _quit 2 "Priority not ok! $HELP";;
+    esac   
+}
+
 add(){
     for value in "description"; do
         [[ -z "${!value}" ]] && _quit 2 "$value is not defined!\n $HELP"
     done
 
     : "${priority:=low}"
+
+    _priorityCheck "$priority"
 
     mkdir -p "$TODO_WORKINGDIR" &>/dev/null
     [[ -f "$TODO_WORKINGDIR/lastId" ]] || printf '0' > "$TODO_WORKINGDIR/lastId"
@@ -126,10 +144,10 @@ list(){
             [[ -z "${tasks[*]}" ]] && continue
             readarray -t orderedTasks < <(printf '%s\n' "${tasks[@]}" | sort -V)
 
-            printf '     %s:\n' "${_priority}"
             for _id in "${orderedTasks[@]}"; do
                 _description="$(<"$_id/description")"
-                printf '        %s. %s\n' "${_id##*/}" "$_description"
+                printf '    %b. %s\n' "${color[$_priority]}${_id##*/}" "$_description"
+                tput sgr0
                 unset _description
             done
             unset tasks orderedTasks
@@ -194,6 +212,14 @@ edit(){
     [[ -z "$description" ]] || printf '%s' "$description" > "$task"/description
 
     ${EDITOR:-vi} "$task"/content
+
+    [[ -z "${priority[0]}" ]] || {
+        _priorityCheck "${priority[0]}"
+        _priority="${priority[0]}"
+        _parse "$task"
+        [[ -d "$TODO_WORKINGDIR/${state[0]}/$_priority/" ]] || mkdir -p "$TODO_WORKINGDIR/${state[0]}/$_priority/"
+        mv "$task" "$TODO_WORKINGDIR/${state[0]}/$_priority"
+    }
 }
 
 case "$1" in
