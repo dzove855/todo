@@ -36,13 +36,14 @@ $USAGE
 
     Environment Variables:
         NO_COLOR
+        TODO_WORKINGDIR
 
     About
         This script will create the following directory tree:
             HOME/$SELF/{created,done,ongoing}/{1-9}/ID/{description,content}
 "
 
-workingDir="$HOME/.$SELF"
+workingDir="${TODO_WORKINGDIR:-$HOME/.$SELF}"
 tempFiles=()
 
 _quit(){
