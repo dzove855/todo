@@ -102,6 +102,14 @@ _priorityCheck(){
     esac   
 }
 
+_sort(){
+    local -a copyiedArray=($@)
+
+    for key in "${copyiedArray[@]}"; do
+        orderedTasks["${key##*/}"]="$key"
+    done
+}
+
 add(){
     for value in "description"; do
         [[ -z "${!value}" ]] && _quit 2 "$value is not defined!\n $HELP"
@@ -142,12 +150,13 @@ list(){
 
             # don't print anything if empty dir
             [[ -z "${tasks[*]}" ]] && continue
-            readarray -t orderedTasks < <(printf '%s\n' "${tasks[@]}" | sort -V)
+
+            _sort "${tasks[*]}"
 
             for _id in "${orderedTasks[@]}"; do
                 _description="$(<"$_id/description")"
                 printf '    %b. %s\n' "${color[$_priority]}${_id##*/}" "$_description"
-                tput sgr0
+                printf '%b' '\E[m\017'
                 unset _description
             done
             unset tasks orderedTasks
