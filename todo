@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# A simple tee in pure bash 
-# Implement reopen files
-
 SELF="${BASH_SOURCE[0]##*/}"
 
 OPTS="d:p:i:s:h"
