@@ -3,7 +3,7 @@
 SELF="${BASH_SOURCE[0]##*/}"
 
 OPTS="d:p:i:s:h"
-USAGE="Usage: $SELF [$OPTS] FILE1 FILE2 ..."
+USAGE="Usage: $SELF [add,edit,done,ongoing,show,list,remove] [$OPTS]"
 
 HELP="
 $USAGE
