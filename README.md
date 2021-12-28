@@ -56,6 +56,8 @@ Edit a task:
 
 Devtodo shortcuts to add in your .bashrc:
 ```
+Setup Aliases for easy usage:
+```
 alias tda="todo add"
 alias tdr="todo remove"
 alias tdl="todo list"
