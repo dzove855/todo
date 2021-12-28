@@ -55,14 +55,13 @@ Edit a task:
   todo edit -i ID  # $EDITOR will now open the task file, to change the description you need to reuse -d
 
 Devtodo shortcuts to add in your .bashrc:
-
-alias tda="todo add"
-alias tdr="todo remove"
-alias tdl="todo list"
-alias tde="todo edit"
-alias tdd="todo done"
-alias tdo="todo ongoing"
-alias tds="todo show"
+  alias tda="todo add"
+  alias tdr="todo remove"
+  alias tdl="todo list"
+  alias tde="todo edit"
+  alias tdd="todo done"
+  alias tdo="todo ongoing"
+  alias tds="todo show"
 ```
 
 # Inspired
